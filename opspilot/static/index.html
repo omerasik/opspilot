@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpsPilot</title><link rel="stylesheet" href="/style.css"><script type="module" src="/dashboard.js"></script></head>
+<body><header><strong>OpsPilot</strong><span>Procurement operations</span></header>
+<main><h1>Vendor quote review</h1><p id="status" role="status"></p>
+<form id="connect" class="card"><label>Operator token<input name="token" type="password" required autocomplete="off"></label><button>Connect</button></form>
+<div id="workspace" hidden>
+<form id="submit" class="card"><h2>Submit a quote</h2>
+<div class="grid">
+<label>Vendor ID<input name="vendor_id" value="leaf-works" required pattern="[a-z0-9\-]{1,40}"></label>
+<label>Spending limit (EUR)<input name="budget_eur" type="number" min="0.01" max="1000000" step="0.01" value="500" required></label>
+<label>Tool attempt budget<input name="tool_budget" type="number" min="1" max="3" value="3" required></label>
+</div>
+<label>Quote text<textarea name="quote" rows="4" maxlength="3000" required>Preventive maintenance
+Total: EUR 375.00</textarea></label>
+<label id="simulate" hidden><input name="fail_first" type="checkbox"> Simulate one transient catalog error</label>
+<button>Start review</button></form>
+<div class="workspace"><section class="card"><h2>Run history</h2><div id="runs"></div></section>
+<section class="card"><h2>Execution details</h2><div id="detail"><p>Select a run.</p></div></section></div>
+</div></main></body></html>
