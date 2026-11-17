@@ -5,12 +5,14 @@ import os
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from typing import Annotated, Literal
+from urllib.parse import urlparse
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict
 
+from .planning import ModelPlanner
 from .store import Conflict, Store
 from .tools import CatalogClient
 from .workflow import Orchestrator, Submission
@@ -24,11 +26,12 @@ class Decision(BaseModel):
     decision: Literal["approve", "reject", "cancel"]
 
 
-def create_app(path: Path, token: str, *, demo: bool = False, auto_worker: bool = True) -> FastAPI:
+def create_app(path: Path, token: str, *, demo: bool = False, auto_worker: bool = True,
+               planner: ModelPlanner | None = None) -> FastAPI:
     if not demo and len(token) < 32:
         raise ValueError("Set a random OPERATOR_TOKEN of at least 32 characters.")
     store = Store(path)
-    workflow = Orchestrator(store, CatalogClient())
+    workflow = Orchestrator(store, CatalogClient(), planner)
 
     async def work():
         while True:
@@ -114,4 +117,15 @@ def create_app(path: Path, token: str, *, demo: bool = False, auto_worker: bool 
 def from_env():
     demo = os.getenv("DEMO_MODE") == "true"
     token = os.getenv("OPERATOR_TOKEN") or (DEMO_TOKEN if demo else "")
-    return create_app(Path(os.getenv("DATABASE_PATH", "data/runs.sqlite")), token, demo=demo)
+    provider = os.getenv("PLANNER_PROVIDER", "rules")
+    planner = None
+    if provider == "openai":
+        endpoint = os.getenv("PLANNER_ENDPOINT", "https://api.openai.com/v1/chat/completions")
+        parsed = urlparse(endpoint)
+        key, model = os.getenv("PLANNER_API_KEY"), os.getenv("PLANNER_MODEL")
+        if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password or not key or not model:
+            raise ValueError("Configure a planner key, model and HTTPS endpoint without URL credentials.")
+        planner = ModelPlanner(endpoint, key, model)
+    elif provider != "rules":
+        raise ValueError("PLANNER_PROVIDER must be rules or openai.")
+    return create_app(Path(os.getenv("DATABASE_PATH", "data/runs.sqlite")), token, demo=demo, planner=planner)
