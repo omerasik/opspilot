@@ -23,3 +23,9 @@ jobs:
       - run: python -m pytest -q
       - run: python -m pip_audit
       - run: docker build -t opspilot:ci .
+      - run: docker run -d --name opspilot-ci -p 127.0.0.1:18020:8000 -e DEMO_MODE=true opspilot:ci
+      - run: python tests/smoke_app.py --url http://127.0.0.1:18020
+      - if: failure()
+        run: docker logs opspilot-ci
+      - if: always()
+        run: docker rm -f opspilot-ci || true

@@ -5,11 +5,12 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from .planning import PERMITTED_STEPS, ModelPlanner, PlannedTool, rule_plan
 from .store import Store
 from .tools import CatalogClient, ToolFault
 
 log = logging.getLogger(__name__)
-STAGES = ["plan", "retrieve_vendor", "analyze_document", "validate", "approval"]
+STAGES = ["plan", *PERMITTED_STEPS]
 
 
 class Submission(BaseModel):
@@ -35,9 +36,10 @@ def analyze_quote(text: str) -> dict:
 
 
 class Orchestrator:
-    def __init__(self, store: Store, tool: CatalogClient):
+    def __init__(self, store: Store, tool: CatalogClient, planner: ModelPlanner | None = None):
         self.store = store
         self.tool = tool
+        self.planner = planner
 
     async def tick(self):
         claimed = self.store.claim()
@@ -52,7 +54,8 @@ class Orchestrator:
         except ToolFault as error:
             retry = error.retryable and attempt < 3
             self.store.event(state, "step_retry" if retry else "step_failed", code_detail=error.code)
-            self.store.checkpoint(run, lease, "queued" if retry else "failed", 2 ** (attempt - 1) if retry else 0)
+            delay = max(2 ** (attempt - 1), error.retry_after) if retry else 0
+            self.store.checkpoint(run, lease, "queued" if retry else "failed", delay)
         else:
             state["outputs"][stage] = result
             self.store.event(state, "step_completed")
@@ -67,13 +70,21 @@ class Orchestrator:
 
     async def execute(self, stage: str, payload: dict, state: dict) -> dict:
         if stage == "plan":
-            return {"objective": "Verify a vendor quote against the procurement catalog and spending limit.",
-                    "steps": STAGES[1:]}
+            return await self.planner.plan(payload) if self.planner else rule_plan(payload)
         if stage == "retrieve_vendor":
             self.store.event(state, "tool_call", tool="lookup_vendor", reservation=state["tool_calls"])
             if payload["fail_first"] and state["attempt"] == 1:
                 raise ToolFault("simulated_catalog_timeout", retryable=True)
-            vendor = await self.tool.call("lookup_vendor", payload["vendor_id"])
+            saved = state["outputs"]["plan"].get("tool_call", {
+                "name": "lookup_vendor", "arguments": {"vendor_id": payload["vendor_id"]},
+            })
+            try:
+                call = PlannedTool.model_validate(saved)
+            except ValueError as error:
+                raise ToolFault("invalid_planned_tool") from error
+            if call.arguments.vendor_id != payload["vendor_id"]:
+                raise ToolFault("planned_vendor_changed")
+            vendor = await self.tool.call(call.name, call.arguments.vendor_id)
             return vendor.model_dump()
         if stage == "analyze_document":
             return analyze_quote(payload["quote"])

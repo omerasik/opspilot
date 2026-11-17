@@ -17,10 +17,11 @@ class Vendor(BaseModel):
 
 
 class ToolFault(Exception):
-    def __init__(self, code: str, *, retryable: bool = False):
+    def __init__(self, code: str, *, retryable: bool = False, retry_after: int = 0):
         super().__init__(code)
         self.code = code
         self.retryable = retryable
+        self.retry_after = retry_after
 
 
 class CatalogClient:

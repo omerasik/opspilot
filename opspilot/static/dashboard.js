@@ -42,10 +42,19 @@ function render(runs) {
     runList.append(element("p", "No submissions yet."));
     return;
   }
+  const expanded = new Set([...detail.querySelectorAll("details[open] summary")].map(summary => summary.textContent));
   detail.replaceChildren(element("p", "Status " + run.status.replaceAll("_", " ")),
     element("p", "Tool attempts " + run.state.tool_calls + " / " + run.payload.tool_budget));
   const stages = ["plan", "retrieve_vendor", "analyze_document", "validate", "approval"];
   detail.append(element("p", stages.map(stage => stage === run.state.stage ? "[" + stage + "]" : stage).join(" → ").replaceAll("_", " ")));
+  for (const [stage, title] of [["plan", "Permitted plan"], ["retrieve_vendor", "MCP catalog result"], ["analyze_document", "Quote evidence"]]) {
+    if (run.state.outputs[stage]) {
+      const panel = element("details", "");
+      panel.open = expanded.has(title);
+      panel.append(element("summary", title), element("pre", JSON.stringify(run.state.outputs[stage], null, 2)));
+      detail.append(panel);
+    }
+  }
   if (run.state.outputs.validate) {
     detail.append(element("h3", "Review brief"), element("pre", JSON.stringify(run.state.outputs.validate, null, 2)));
   }
@@ -53,7 +62,11 @@ function render(runs) {
     ["queued", "running"].includes(run.status) ? ["cancel"] : [];
   for (const action of actions) {
     const button = element("button", action[0].toUpperCase() + action.slice(1));
-    button.onclick = () => void perform(async () => { await post("runs/" + run.id + "/decision", { decision: action }); });
+    button.onclick = () => {
+      if (window.confirm(action[0].toUpperCase() + action.slice(1) + " this internal review?")) {
+        void perform(async () => { await post("runs/" + run.id + "/decision", { decision: action }); });
+      }
+    };
     detail.append(button, " ");
   }
   const trace = element("ol", "", "trace");
@@ -67,8 +80,8 @@ function render(runs) {
 async function perform(action) {
   if (pending) return;
   pending = true;
-  status.textContent = "";
-  try { await action(); render(await call("runs")); }
+  status.textContent = "Working…";
+  try { await action(); render(await call("runs")); status.textContent = ""; }
   catch (error) { status.textContent = error.message; }
   finally { pending = false; }
 }
