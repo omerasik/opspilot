@@ -53,3 +53,7 @@ python -m pip_audit
 With a running local demo, `python tests/smoke_app.py --url http://127.0.0.1:8000` verifies actual MCP lookup, transient retry, business flags, approval and rejection. CI runs this check inside the built container. Use vendor `river-studio` with a spending limit below the quote to inspect an escalation recommendation, then reject the internal brief.
 
 The tests run the actual SDK client and catalog subprocess in the main workflow, simulate a temporary failure and a restart, and verify the approval gate and contention between workers. Planner tests pass a mocked model's validated tool call into the real MCP client, reject hostile plans, and verify rate-limit persistence. The offline demonstration incurs no model expense. [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk).
+
+## License
+
+Original project code is licensed under MIT. See [LICENSE](LICENSE) and [third-party notices](THIRD_PARTY_NOTICES.md).
